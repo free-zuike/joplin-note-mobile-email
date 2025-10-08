@@ -1,0 +1,16 @@
+{
+	"manifest_version": 1,
+	"id": "com.github.joplin-note-mobile-email",
+	"app_min_version": "3.3",
+	"version": "1.0.0",
+	"name": "joplin-note-mobile-email",
+	"description": "移动端通过邮件发送笔记",
+	"author": "醉客",
+	"homepage_url": "https://github.com/free-zuike/joplin-note-mobile-email",
+	"repository_url": "https://github.com/free-zuike/joplin-note-mobile-email",
+	"keywords": [],
+	"categories": [],
+	"screenshots": [],
+	"icons": {},
+	"promo_tile": {}
+}
