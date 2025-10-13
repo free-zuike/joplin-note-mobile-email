@@ -1,8 +1,9 @@
 import joplin from 'api';
+import { init } from './translation';
 
 joplin.plugins.register({
-	onStart: async function() {
-		// eslint-disable-next-line no-console
-		console.info('Hello world. Test plugin started!');
-	},
+    onStart: async function () {
+        console.log("初始化");
+        await init();
+    },
 });
