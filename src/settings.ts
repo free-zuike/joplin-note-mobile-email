@@ -61,6 +61,15 @@ export async function joplin_settings(translate: (key: any) => any) {
             public: true,
             description: translate('to_description'),
         },
+        'resendApiKey': {
+            label: 'Resend API Key',
+            value: '',
+            type: SettingItemType.String,
+            section: 'joplin-note-email',
+            public: true,
+            secure: true,
+            description: 'Resend 邮件服务的 API Key（从 https://resend.com 获取）',
+        },
         'table_style': {
             label: translate('table_style'),
             value: 'width: 100%; border-spacing: 0px; border-collapse: collapse; border: none; margin-top: 20px;',
