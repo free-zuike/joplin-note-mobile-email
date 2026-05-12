@@ -1,17 +1,10 @@
 import joplin from 'api';
-//smtp.js文件末尾手动添加
-// if (typeof module !== 'undefined') {
-//   module.exports = {
-//     Email
-//   };
-// }
-const { Email } = require ("./res/lang/smtp");
-const translations = require("./res/lang/translation.json");
+const emailjs: any = require('emailjs-com');
 import { convertToHTML } from './markdownToHtml';
 import { currentGlobal } from './translation';
 
-// 将html中的src地址设置为smtpjs支持发松的格式
-function htmlOfImageUrl(html) {
+// 将html中的src地址设置为EmailJS支持的格式
+function htmlOfImageUrl(html: string) {
     const regExp = /<img[^>]+src=['"]([^'"]+)['"]+/g;
     let temp;
     while ((temp = regExp.exec(html)) != null) {
@@ -23,76 +16,42 @@ function htmlOfImageUrl(html) {
     return html;
 }
 
-// 获取html中的src地址，存为数组
-async function htmlOfImage(html) {
-    const regExp = /<img[^>]+src=['"]([^'"]+)['"]+/g;
-    const result = [];
-    let temp;
-    while ((temp = regExp.exec(html)) != null) {
-        if (temp[1].startsWith(":/")) {
-            let srcId = temp[1].replace(/:\//, "");
-            let title;
-            await joplin.data.get(['resources', srcId], {
-                fields: "id, title, updated_time",
-                order_by: "updated_time",
-                order_dir: "DESC"
-            }).then(function (obj) {
-                title = obj.title;
-            });
-            await joplin.data.resourcePath(srcId).then(function (scr_url) {
-                result.push({ 'name': title, 'path': scr_url, 'cid': srcId });
-            });
-        }
+async function sendWithEmailJS(serviceId: string, templateId: string, publicKey: string, templateParams: any) {
+    try {
+        const result = await emailjs.send(serviceId, templateId, templateParams, publicKey);
+        console.info('EmailJS 邮件发送成功:', result);
+        return true;
+    } catch (error) {
+        console.error('EmailJS 发送邮件出错:', error);
+        return false;
     }
-    return result;
 }
 
-//通过smtpjs发送消息
-async function smtpjsSend(secureToken, host, port, secure, user, pass, from, to, subject, html, imgSrc) {
-    Email.send({
-        Host : host,
-        Port : port,
-        Secure : secure,
-        Username : user,
-        Password : pass,
-        To : to,
-        From : from,
-        Subject : subject,
-        Body : html,
-        Attachments : imgSrc
-    }).then(
-        message => alert(message)
-    );
-    // Email.send({
-    //     SecureToken : secureToken,
-    //     To : to,
-    //     From : from,
-    //     Subject : subject,
-    //     Body : html,
-    //     Attachments : imgSrc
-    // }).then(
-    //     message => alert(message)
-    // );
-}
+export async function sendEmail(title: any, content: string) {
+    const serviceId = await joplin.settings.value('emailjsServiceId');
+    const templateId = await joplin.settings.value('emailjsTemplateId');
+    const publicKey = await joplin.settings.value('emailjsPublicKey');
+    const from = await joplin.settings.value('user');
+    const to = await joplin.settings.value('to');
 
-// 发送邮件
-export async function sendEmail(title, content) {
-    const secureToken = await joplin.settings.value("secureToken");
-    const host = await joplin.settings.value("host");
-    const port = await joplin.settings.value("port");
-    const secure = await joplin.settings.value("secure");
-    const user = await joplin.settings.value("user");
-    const pass = await joplin.settings.value("pass");
-    const to = await joplin.settings.value("to");
+    if (!serviceId || !templateId || !publicKey) {
+        console.error('EmailJS 设置未配置完整，请填写 serviceId、templateId 和 publicKey');
+        return false;
+    }
 
-    convertToHTML(content).then(function (htmlText) {
-        // 获取图像地址
-        const attachments = htmlOfImage(htmlText);
-        console.info(attachments);
-        // 适合smtpjs的图像地址
-        const html = htmlOfImageUrl(htmlText);
-        // 发送消息
-        console.info(Email);
-        smtpjsSend(secureToken, host, port, secure, user, pass, user, to, title, html, attachments);
-    });
+    const htmlText = await convertToHTML(content);
+    const html = htmlOfImageUrl(htmlText);
+
+    const templateParams = {
+        from_name: from || '',
+        to_email: to || '',
+        subject: title || '',
+        message_html: html || '',
+    };
+
+    const success = await sendWithEmailJS(serviceId, templateId, publicKey, templateParams);
+    if (!success) {
+        console.error('发送邮件失败: ', currentGlobal().translation.sendEmailFailed);
+    }
+    return success;
 }
