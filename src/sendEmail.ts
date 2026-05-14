@@ -254,169 +254,72 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
     const isMobile = platform !== 'desktop';
     console.info('平台检测: ' + platform + ', isMobile: ' + isMobile);
     
+    let result = '';
+    
     // 方法1: 尝试 joplin.data.get 获取资源文件（移动端主要方式）
-    // 返回的对象包含: type, body, contentType, attachmentFilename
+    console.info('--- 方法1: joplin.data.get ---');
     try {
         const resourceFile = await joplin.data.get(['resources', resourceId, 'file']);
-        console.info('joplin.data.get 返回结果:', JSON.stringify(resourceFile).substring(0, 500));
+        console.info('joplin.data.get 返回类型: ' + typeof resourceFile);
         
         if (resourceFile) {
-            const resourceType = typeof resourceFile;
-            const resourceKeys = resourceFile ? Object.keys(resourceFile).join(', ') : 'null';
-            console.info('资源文件类型: ' + resourceType + ', keys: ' + resourceKeys);
+            // 打印所有属性帮助调试
+            const resourceKeys = Object.keys(resourceFile);
+            console.info('返回对象包含属性: ' + JSON.stringify(resourceKeys));
             
-            // 直接处理 ArrayBuffer 类型
-            if (resourceFile instanceof ArrayBuffer) {
-                console.info('直接处理 ArrayBuffer');
-                return bytesToBase64(new Uint8Array(resourceFile));
+            for (const key of resourceKeys) {
+                const val = resourceFile[key];
+                console.info(`  属性 ${key}: 类型=${typeof val}, 值=${val === null ? 'null' : (typeof val === 'object' ? '[Object]' : String(val).substring(0, 50))}`);
             }
             
-            // 处理 Blob 类型
-            if (resourceFile instanceof Blob || (resourceFile && typeof resourceFile.arrayBuffer === 'function')) {
-                console.info('处理 Blob 类型');
-                try {
-                    const buffer = await resourceFile.arrayBuffer();
-                    return bytesToBase64(new Uint8Array(buffer));
-                } catch (blobErr) {
-                    console.info('Blob 处理失败: ' + (blobErr instanceof Error ? blobErr.message : String(blobErr)));
-                }
+            // 尝试处理整个对象
+            result = await toBase64(resourceFile);
+            if (result && result.length > 0) {
+                console.info('方法1 (toBase64) 成功');
+                return result;
             }
             
-            // 处理 TypedArray 类型
-            const TypedArray = Object.getPrototypeOf(Uint8Array);
-            if (resourceFile instanceof TypedArray) {
-                console.info('处理 TypedArray 类型');
-                return bytesToBase64(new Uint8Array(resourceFile.buffer));
-            }
-            
-            // 检查所有可能的属性，进行全面尝试
-            const possibleProps = ['body', 'data', 'content', 'buffer', '_data', 'file', 'binary'];
-            for (const prop of possibleProps) {
+            // 逐个尝试属性
+            for (const prop of resourceKeys) {
                 if (resourceFile[prop] !== undefined && resourceFile[prop] !== null) {
-                    console.info('尝试处理属性: ' + prop + ', 类型: ' + typeof resourceFile[prop]);
-                    const result = await tryProcessValue(resourceFile[prop]);
-                    if (result) {
-                        console.info('通过属性 ' + prop + ' 成功获取数据');
-                        return result;
+                    console.info('尝试处理属性: ' + prop);
+                    const propResult = await toBase64(resourceFile[prop]);
+                    if (propResult && propResult.length > 0) {
+                        console.info('通过属性 ' + prop + ' 成功获取');
+                        return propResult;
                     }
                 }
             }
             
-            // 如果上述都失败，尝试直接处理整个对象
-            console.info('尝试直接处理整个对象');
-            const directResult = await tryProcessValue(resourceFile);
-            if (directResult) {
-                console.info('直接处理对象成功');
-                return directResult;
+            // 尝试特殊属性
+            const specialProps = ['body', 'data', 'content', 'buffer'];
+            for (const prop of specialProps) {
+                if (resourceFile[prop]) {
+                    console.info('尝试特殊属性: ' + prop);
+                    const propResult = await toBase64(resourceFile[prop]);
+                    if (propResult && propResult.length > 0) {
+                        return propResult;
+                    }
+                }
             }
         } else {
-            console.info('joplin.data.get 返回 null 或 undefined');
+            console.info('joplin.data.get 返回 null/undefined');
         }
     } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        console.info('joplin.data.get 错误: ' + errorMessage);
-        console.info('错误堆栈: ' + (e instanceof Error ? e.stack : ''));
+        console.info('方法1失败: ' + (e instanceof Error ? e.message : String(e)));
     }
     
-    // 内部辅助函数，用于处理各种可能的类型
-    async function tryProcessValue(value: any): Promise<string | null> {
-        if (!value) return null;
-        
-        // ArrayBuffer
-        if (value instanceof ArrayBuffer) {
-            console.info('处理 ArrayBuffer');
-            return bytesToBase64(new Uint8Array(value));
-        }
-        
-        // Uint8Array
-        if (value instanceof Uint8Array) {
-            console.info('处理 Uint8Array');
-            return bytesToBase64(value);
-        }
-        
-        // TypedArray
-        const TypedArray = Object.getPrototypeOf(Uint8Array);
-        if (value instanceof TypedArray) {
-            console.info('处理 TypedArray');
-            return bytesToBase64(new Uint8Array(value.buffer));
-        }
-        
-        // Blob
-        if (value instanceof Blob || typeof value.arrayBuffer === 'function') {
-            console.info('处理 Blob 或有 arrayBuffer 方法');
-            try {
-                const buffer = await value.arrayBuffer();
-                return bytesToBase64(new Uint8Array(buffer));
-            } catch (e) {
-                console.info('arrayBuffer 失败: ' + (e instanceof Error ? e.message : String(e)));
-            }
-        }
-        
-        // String
-        if (typeof value === 'string') {
-            if (isDataUri(value)) {
-                console.info('处理 data URI');
-                return value.split(',')[1] || '';
-            }
-            if (/^[A-Za-z0-9+/=]+$/.test(value)) {
-                console.info('处理 base64 字符串');
-                return value;
-            }
-        }
-        
-        // 嵌套对象 - 尝试常见的属性
-        if (typeof value === 'object' && value !== null) {
-            // 尝试 data 检查是否是类数组对象（数字键）
-            const keys = Object.keys(value);
-            if (keys.length > 0 && /^\d+$/.test(keys[0])) {
-                console.info('检测到类数组对象，键数: ' + keys.length);
-                let maxIndex = -1;
-                for (const key of keys) {
-                    if (/^\d+$/.test(key)) {
-                        maxIndex = Math.max(maxIndex, parseInt(key, 10));
-                    }
-                }
-                if (maxIndex >= 0) {
-                    console.info('构造 Uint8Array，长度: ' + (maxIndex + 1));
-                    const uint8Array = new Uint8Array(maxIndex + 1);
-                    for (let i = 0; i <= maxIndex; i++) {
-                        uint8Array[i] = value[i];
-                    }
-                    return bytesToBase64(uint8Array);
-                }
-            }
-            
-            // 尝试 toString('base64')
-            if (typeof value.toString === 'function') {
-                try {
-                    const result = value.toString('base64');
-                    if (typeof result === 'string' && /^[A-Za-z0-9+/=]+$/.test(result)) {
-                        console.info('toString(base64) 成功');
-                        return result;
-                    }
-                } catch (e) {
-                    console.info('toString(base64) 失败: ' + (e instanceof Error ? e.message : String(e)));
-                }
-            }
-            
-            // 尝试递归处理子属性
-            const nestedProps = ['data', 'body', 'content', 'buffer'];
-            for (const prop of nestedProps) {
-                if (value[prop] !== undefined && value[prop] !== null) {
-                    const nestedResult = await tryProcessValue(value[prop]);
-                    if (nestedResult) {
-                        return nestedResult;
-                    }
-                }
-            }
-        }
-        
-        return null;
+    // 方法2: fetchResourceFileFromApi
+    console.info('--- 方法2: fetchResourceFileFromApi ---');
+    result = await fetchResourceFileFromApi(resourceId);
+    if (result && result.length > 0) {
+        console.info('方法2成功');
+        return result;
     }
-
-    // 方法2: 尝试通过 resourcePath + fetch（桌面端主要方式）
-    // 移动端可能不支持此方法
+    
+    // 方法3: 如果是桌面端，尝试 resourcePath + fetch
     if (!isMobile) {
+        console.info('--- 方法3: resourcePath + fetch ---');
         try {
             const resourcePath = await joplin.data.resourcePath(resourceId);
             if (resourcePath) {
@@ -426,35 +329,24 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
                 if (response.ok) {
                     const buffer = await response.arrayBuffer();
                     return bytesToBase64(new Uint8Array(buffer));
-                } else {
-                    console.info('fetch 响应失败，状态码: ' + response.status);
                 }
             }
         } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : String(e);
-            console.info('resourcePath + fetch 错误: ' + errorMessage);
+            console.info('方法3失败: ' + (e instanceof Error ? e.message : String(e)));
+        }
+        
+        // 方法4: imaging API
+        console.info('--- 方法4: imaging API ---');
+        result = await fetchResourceFileWithImaging(resourceId);
+        if (result && result.length > 0) {
+            console.info('方法4成功');
+            return result;
         }
     } else {
-        console.info('移动端跳过 resourcePath 方法');
+        console.info('移动端跳过桌面端专用方法');
     }
-
-    // 方法3: 尝试 imaging API（仅桌面端）
-    if (!isMobile && joplin.imaging?.createFromResource) {
-        try {
-            console.info('尝试 imaging API');
-            const handle = await joplin.imaging.createFromResource(resourceId);
-            const data = await joplin.imaging.resize(handle);
-            await joplin.imaging.free(handle);
-            if (typeof data === 'string' && data.startsWith('data:')) {
-                console.info('imaging API 成功');
-                return data.split(',')[1] || '';
-            }
-        } catch (e) {
-            console.info('imaging API 错误: ' + (e instanceof Error ? e.message : String(e)));
-        }
-    }
-
-    console.info('所有方法均失败，返回空字符串');
+    
+    console.info('========== 所有获取方法均失败 ==========');
     return '';
 }
 
@@ -579,14 +471,13 @@ export async function sendEmail(title: any, content: string): Promise<boolean> {
     
     // 如果有失败的图片资源，不发送邮件
     if (failedResources.length > 0) {
-        console.info('图片资源获取失败详情:');
-        console.info('- 平台: ' + platform);
-        console.info('- 失败的资源数量: ' + failedResources.length);
-        console.info('- 失败的资源ID: ' + JSON.stringify(failedResources));
-        console.info('- 附件数量: ' + attachments.length);
+        console.info('========== 图片资源获取失败 ==========');
+        console.info('平台: ' + platform);
+        console.info('失败的资源数量: ' + failedResources.length);
+        console.info('失败的资源ID: ' + JSON.stringify(failedResources));
+        console.info('成功附件数量: ' + attachments.length);
         
-        // 详细的失败消息
-        const errorMsg = `\u56FE\u7247\u8D44\u6E90\u83B7\u53D6\u5931\u8D25\uFF08${failedResources.length}\u4E2A\uFF09\u3002\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u8BE6\u7EC6\u4FE1\u606F\u3002\n\n\u629B\u5F00\u7B56\u7565\uFF1A\n1. \u68C0\u67E5\u56FE\u7247\u662F\u5426\u6B63\u5E38\u4FDD\u5B58\n2. \u5C1D\u8BD5\u91CD\u65B0\u63D2\u5165\u56FE\u7247\n3. \u786E\u4FDD\u7F51\u7EDC\u8FDE\u63A5\u6B63\u5E38`;
+        const errorMsg = `图片资源获取失败 (${failedResources.length}个)\n\n请查看控制台日志了解详情\n\n查看方法：\n1. 打开 Joplin 设置\n2. 找到“开发人员工具”或“日志”\n3. 查找包含“开始获取资源”和失败的日志\n\n资源ID: ${failedResources.slice(0, 5).join(', ')}${failedResources.length > 5 ? '...' : ''}`;
         
         await joplin.views.dialogs.showMessageBox(errorMsg);
         return false;
