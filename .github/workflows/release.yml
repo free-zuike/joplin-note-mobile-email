@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'android'
+      - 'Resend'
+      - 'EmailJS'
 
 jobs:
   build:
@@ -30,6 +34,30 @@ jobs:
     - name: Build plugin
       run: npm run dist
 
+    - name: Get branch name
+      id: branch
+      run: |
+        if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          BRANCH_NAME="tag-${GITHUB_REF_NAME}"
+        else
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+        fi
+        echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+        echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+        echo "Branch name: ${BRANCH_NAME}"
+
+    - name: Copy jpl file with branch name
+      run: |
+        BRANCH_NAME=${{ steps.branch.outputs.branch }}
+        if [ -f "publish/com.github.joplin-note-mobile-email.jpl" ]; then
+          cp "publish/com.github.joplin-note-mobile-email.jpl" "publish/com.github.joplin-note-mobile-email-${BRANCH_NAME}.jpl"
+          echo "Copied to com.github.joplin-note-mobile-email-${BRANCH_NAME}.jpl"
+        fi
+        if [ -f "dist/com.github.joplin-note-mobile-email.jpl" ]; then
+          cp "dist/com.github.joplin-note-mobile-email.jpl" "dist/com.github.joplin-note-mobile-email-${BRANCH_NAME}.jpl"
+          echo "Copied to dist/com.github.joplin-note-mobile-email-${BRANCH_NAME}.jpl"
+        fi
+
     - name: List output files
       run: |
         echo "=== dist directory ==="
@@ -37,7 +65,25 @@ jobs:
         echo "=== publish directory ==="
         ls -la publish/ 2>/dev/null || echo "publish dir not found"
 
-    - name: Upload to GitHub Release
+    - name: Create release for branch
+      if: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: snapshot-${{ steps.branch.outputs.branch }}
+        name: Snapshot - ${{ steps.branch.outputs.branch }}
+        files: |
+          dist/*.jpl
+          dist/manifest.json
+          publish/*.jpl
+          publish/manifest.json
+        draft: false
+        prerelease: true
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload to GitHub Release (tag)
+      if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
       uses: softprops/action-gh-release@v2
       with:
         files: |
@@ -47,5 +93,6 @@ jobs:
           publish/manifest.json
         draft: false
         prerelease: false
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
