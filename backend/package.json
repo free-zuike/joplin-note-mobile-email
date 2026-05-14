@@ -1,0 +1,16 @@
+{
+  "name": "joplin-resend-proxy",
+  "version": "1.0.0",
+  "description": "Proxy server for Joplin plugin to send emails via Resend API",
+  "main": "resend-proxy.js",
+  "scripts": {
+    "start": "node resend-proxy.js",
+    "dev": "node resend-proxy.js"
+  },
+  "keywords": ["joplin", "resend", "email", "proxy"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

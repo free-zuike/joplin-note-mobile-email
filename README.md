@@ -1,5 +1,118 @@
-# Joplin Plugin
+# Joplin 笔记邮件发送插件
 
-This is your new Joplin plugin. It is suggested that you use this README file to document your plugin.
+一个用于在 Joplin 移动端发送笔记到邮件的插件。
 
-For information on how to build or publish the plugin, please see [GENERATOR_DOC.md](./GENERATOR_DOC.md)
+## ✨ 功能特点
+
+- 在 Joplin 移动端发送笔记到指定邮箱
+- 支持发送包含图片的笔记
+- 支持通过代理服务器发送邮件（解决移动端 CORS 限制）
+- 支持自定义邮件样式
+
+## 📦 安装方式
+
+### 方法一：从 Joplin 插件商店安装
+
+1. 在 Joplin 中打开「选项」->「插件」
+2. 在搜索框中搜索 "Email" 或 "邮件"
+3. 找到插件并点击安装
+
+### 方法二：手动安装
+
+1. 下载最新的 `.jpl` 发布文件
+2. 在 Joplin 中打开「选项」->「插件」
+3. 点击「安装插件」
+4. 选择下载的 `.jpl` 文件
+
+## ⚙️ 配置说明
+
+### 基本配置
+
+在 Joplin 插件设置中配置以下选项：
+
+| 配置项 | 说明 | 必填 |
+|--------|------|------|
+| Resend API Key | 在 [Resend](https://resend.com) 获取的 API Key | ✅ |
+| 发送者邮箱 | 发送邮件的邮箱地址（需在 Resend 中验证） | ✅ |
+| 接收者邮箱 | 接收邮件的邮箱地址 | ✅ |
+
+### 可选配置
+
+| 配置项 | 说明 |
+|--------|------|
+| Resend 代理地址 | 代理服务器地址（移动端需要配置，绕过 CORS 限制） |
+
+### 高级配置
+
+| 配置项 | 说明 |
+|--------|------|
+| 表格样式 | 自定义表格样式 |
+| 标题样式 | 自定义标题样式 |
+| 引用样式 | 自定义引用样式 |
+| 代码块样式 | 自定义代码块样式 |
+| LaTeX 渲染服务 | 选择 LaTeX 渲染服务 |
+
+## 📧 使用方法
+
+### 方式一：发送整个笔记
+
+1. 打开要发送的笔记
+2. 点击工具栏上的邮件图标
+
+### 方式二：发送选中文本
+
+1. 在笔记中选中要发送的文本
+2. 右键点击选中的文本
+3. 选择「发送选中内容到邮件」
+
+## 🔧 代理服务器配置（移动端必需）
+
+由于移动端的 CORS 限制，需要配置代理服务器。请参考 `backend/README.md` 了解详细配置方法。
+
+### 推荐方案：Cloudflare Worker（免费）
+
+1. 注册 Cloudflare 账户：https://dash.cloudflare.com/
+2. 创建新 Worker
+3. 复制 `backend/cloudflare-worker.js` 的内容粘贴进去
+4. 保存并部署
+5. 在插件设置中填入 Worker URL
+
+## 🛠️ 开发
+
+### 环境要求
+
+- Node.js 18+
+- npm 或 yarn
+
+### 构建
+
+```bash
+npm install
+npm run dist
+```
+
+构建完成后，发布文件位于 `publish` 目录下。
+
+### 测试
+
+在 Joplin 开发者模式下安装生成的 `.jpl` 文件进行测试。
+
+## 📝 更新日志
+
+### v1.0.0
+- 初始版本
+- 支持发送笔记到邮件
+- 支持图片附件
+- 支持代理服务器
+
+## 📄 许可证
+
+MIT License
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📞 支持
+
+如果遇到问题，请在 GitHub 仓库提交 Issue。

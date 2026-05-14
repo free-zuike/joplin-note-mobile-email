@@ -4,38 +4,6 @@ import { sendEmail } from './sendEmail';
 
 export async function joplin_settings(translate: (key: any) => any) {
     await joplin.settings.registerSettings({
-        'secureToken': {
-            label: translate('secureToken'),
-            value: '76b570b3-12d8-42af-a5a5-00924664a4',
-            type: SettingItemType.String,
-            section: 'joplin-note-email',
-            public: true,
-            description: translate('secureToken_description'),
-        },
-        'host': {
-            label: translate('host'),
-            value: 'smtp.office365.com',
-            type: SettingItemType.String,
-            section: 'joplin-note-email',
-            public: true,
-            description: translate('host_description'),
-        },
-        'port': {
-            label: translate('port'),
-            value: 587,
-            type: SettingItemType.Int,
-            section: 'joplin-note-email',
-            public: true,
-            description: translate('port_description'),
-        },
-        'secure': {
-            label: translate('secure'),
-            value: false,
-            type: SettingItemType.Bool,
-            section: 'joplin-note-email',
-            public: true,
-            description: translate('secure_description'),
-        },
         'user': {
             label: translate('user'),
             value: '',
@@ -43,15 +11,6 @@ export async function joplin_settings(translate: (key: any) => any) {
             section: 'joplin-note-email',
             public: true,
             description: translate('user_description'),
-        },
-        'pass': {
-            label: translate('pass'),
-            value: '',
-            type: SettingItemType.String,
-            section: 'joplin-note-email',
-            public: true,
-            secure: true,
-            description: translate('pass_description'),
         },
         'to': {
             label: translate('to'),
@@ -69,6 +28,14 @@ export async function joplin_settings(translate: (key: any) => any) {
             public: true,
             secure: true,
             description: 'Resend 邮件服务的 API Key（从 https://resend.com 获取）',
+        },
+        'resendProxyUrl': {
+            label: 'Resend 代理地址',
+            value: '',
+            type: SettingItemType.String,
+            section: 'joplin-note-email',
+            public: true,
+            description: 'Resend Cloudflare Worker URL（格式：https://your-worker.workers.dev/emails）',
         },
         'table_style': {
             label: translate('table_style'),

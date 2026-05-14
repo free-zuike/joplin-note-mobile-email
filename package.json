@@ -35,7 +35,6 @@
   },
   "dependencies": {
     "jquery": "^4.0.0",
-    "resend": "^3.0.0",
     "showdown": "^2.1.0"
   }
 }

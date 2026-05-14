@@ -5,6 +5,19 @@
 		"target": "es2015",
 		"jsx": "react",
 		"allowJs": true,
-		"baseUrl": "."
-	}
+		"baseUrl": ".",
+		"noImplicitAny": false,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"ignoreDeprecations": "6.0"
+	},
+	"include": [
+		"src/**/*",
+		"api/**/*"
+	],
+	"exclude": [
+		"node_modules",
+		"dist"
+	]
 }
