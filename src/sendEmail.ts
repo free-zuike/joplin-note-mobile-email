@@ -247,7 +247,7 @@ async function toBase64(resourceFile: any): Promise<string> {
 }
 
 async function getResourceContentBase64(resourceId: string): Promise<string> {
-    console.info('开始获取资源: ' + resourceId);
+    console.info('========== 开始获取资源: ' + resourceId + ' ==========');
     
     const versionInfo = await joplin.versionInfo();
     const platform = versionInfo.platform;
@@ -258,7 +258,7 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
     // 返回的对象包含: type, body, contentType, attachmentFilename
     try {
         const resourceFile = await joplin.data.get(['resources', resourceId, 'file']);
-        console.info('joplin.data.get 返回结果:', JSON.stringify(resourceFile).substring(0, 200));
+        console.info('joplin.data.get 返回结果:', JSON.stringify(resourceFile).substring(0, 500));
         
         if (resourceFile) {
             const resourceType = typeof resourceFile;
@@ -282,188 +282,32 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
                 }
             }
             
-            // 检查 body 属性（移动端返回的图片数据在 body 中）
-            if (resourceFile.body !== undefined && resourceFile.body !== null) {
-                console.info('处理 body 属性，类型: ' + typeof resourceFile.body);
-                const body = resourceFile.body;
-                
-                // 直接 ArrayBuffer
-                if (body instanceof ArrayBuffer) {
-                    return bytesToBase64(new Uint8Array(body));
-                }
-                
-                // Uint8Array
-                if (body instanceof Uint8Array) {
-                    return bytesToBase64(body);
-                }
-                
-                // Blob 或有 arrayBuffer 方法
-                if (body instanceof Blob || typeof body.arrayBuffer === 'function') {
-                    try {
-                        const buffer = await body.arrayBuffer();
-                        return bytesToBase64(new Uint8Array(buffer));
-                    } catch (blobBodyErr) {
-                        console.info('body.arrayBuffer 失败: ' + (blobBodyErr instanceof Error ? blobBodyErr.message : String(blobBodyErr)));
-                    }
-                }
-                
-                // string 类型
-                if (typeof body === 'string') {
-                    // data URI
-                    if (isDataUri(body)) {
-                        return body.split(',')[1] || '';
-                    }
-                    // base64 字符串
-                    if (/^[A-Za-z0-9+/=]+$/.test(body)) {
-                        return body;
-                    }
-                }
-                
-                // 处理 body.data
-                if (body.data !== undefined) {
-                    const data = body.data;
-                    if (data instanceof ArrayBuffer) {
-                        return bytesToBase64(new Uint8Array(data));
-                    }
-                    if (data instanceof Uint8Array) {
-                        return bytesToBase64(data);
-                    }
-                    if (typeof data === 'string') {
-                        if (isDataUri(data)) {
-                            return data.split(',')[1] || '';
-                        }
-                        if (/^[A-Za-z0-9+/=]+$/.test(data)) {
-                            return data;
-                        }
-                    }
-                    if (data instanceof Blob || typeof data.arrayBuffer === 'function') {
-                        try {
-                            const buffer = await data.arrayBuffer();
-                            return bytesToBase64(new Uint8Array(buffer));
-                        } catch (dataBlobErr) {
-                            console.info('data.arrayBuffer 失败: ' + (dataBlobErr instanceof Error ? dataBlobErr.message : String(dataBlobErr)));
-                        }
-                    }
-                }
-                
-                // 处理 body.buffer
-                if (body.buffer instanceof ArrayBuffer) {
-                    return bytesToBase64(new Uint8Array(body.buffer));
-                }
-                
-                // 移动端返回的类数组对象（序列化的 Uint8Array）
-                // 通过检查第一个 key 是否是数字来判断
-                if (typeof body === 'object' && body !== null) {
-                    const bodyKeys = Object.keys(body);
-                    if (bodyKeys.length > 0 && /^\d+$/.test(bodyKeys[0])) {
-                        console.info('检测到类数组对象，包含 ' + bodyKeys.length + ' 个键');
-                        
-                        // 找到最大索引
-                        let maxIndex = -1;
-                        for (const key of bodyKeys) {
-                            if (/^\d+$/.test(key)) {
-                                const numKey = parseInt(key, 10);
-                                if (numKey > maxIndex) {
-                                    maxIndex = numKey;
-                                }
-                            }
-                        }
-                        
-                        if (maxIndex >= 0) {
-                            console.info('构造 Uint8Array，长度: ' + (maxIndex + 1));
-                            const uint8Array = new Uint8Array(maxIndex + 1);
-                            for (let i = 0; i <= maxIndex; i++) {
-                                uint8Array[i] = body[i];
-                            }
-                            return bytesToBase64(uint8Array);
-                        }
-                    }
-                    
-                    // 检查是否有 toString('base64') 方法（Node.js Buffer）
-                    if (typeof body.toString === 'function') {
-                        try {
-                            const result = body.toString('base64');
-                            if (typeof result === 'string' && /^[A-Za-z0-9+/=]+$/.test(result)) {
-                                console.info('使用 toString(base64) 成功');
-                                return result;
-                            }
-                        } catch (toStringErr) {
-                            console.info('toString(base64) 失败: ' + (toStringErr instanceof Error ? toStringErr.message : String(toStringErr)));
-                        }
-                    }
-                }
-            }
-            
-            // 检查 data 属性
-            if (resourceFile.data !== undefined) {
-                console.info('找到 data 属性，类型: ' + typeof resourceFile.data);
-                const data = resourceFile.data;
-                
-                if (data instanceof ArrayBuffer) {
-                    return bytesToBase64(new Uint8Array(data));
-                }
-                if (data instanceof Uint8Array) {
-                    return bytesToBase64(data);
-                }
-                if (data instanceof Blob || typeof data.arrayBuffer === 'function') {
-                    try {
-                        const buffer = await data.arrayBuffer();
-                        return bytesToBase64(new Uint8Array(buffer));
-                    } catch (dataBlobErr) {
-                        console.info('data.arrayBuffer 失败: ' + (dataBlobErr instanceof Error ? dataBlobErr.message : String(dataBlobErr)));
-                    }
-                }
-                if (typeof data === 'string') {
-                    if (isDataUri(data)) {
-                        return data.split(',')[1] || '';
-                    }
-                    if (/^[A-Za-z0-9+/=]+$/.test(data)) {
-                        return data;
-                    }
-                }
-            }
-            
-            // 检查 content 属性（某些 API 可能使用这个字段）
-            if (resourceFile.content !== undefined) {
-                console.info('找到 content 属性，类型: ' + typeof resourceFile.content);
-                const content = resourceFile.content;
-                
-                if (content instanceof ArrayBuffer) {
-                    return bytesToBase64(new Uint8Array(content));
-                }
-                if (content instanceof Uint8Array) {
-                    return bytesToBase64(content);
-                }
-                if (content instanceof Blob || typeof content.arrayBuffer === 'function') {
-                    try {
-                        const buffer = await content.arrayBuffer();
-                        return bytesToBase64(new Uint8Array(buffer));
-                    } catch (contentBlobErr) {
-                        console.info('content.arrayBuffer 失败: ' + (contentBlobErr instanceof Error ? contentBlobErr.message : String(contentBlobErr)));
-                    }
-                }
-                if (typeof content === 'string') {
-                    if (isDataUri(content)) {
-                        return content.split(',')[1] || '';
-                    }
-                    if (/^[A-Za-z0-9+/=]+$/.test(content)) {
-                        return content;
-                    }
-                }
-            }
-            
-            // 检查 buffer 属性（某些序列化方式）
-            if (resourceFile.buffer instanceof ArrayBuffer) {
+            // 处理 TypedArray 类型
+            const TypedArray = Object.getPrototypeOf(Uint8Array);
+            if (resourceFile instanceof TypedArray) {
+                console.info('处理 TypedArray 类型');
                 return bytesToBase64(new Uint8Array(resourceFile.buffer));
             }
             
-            // 尝试使用 toBase64 辅助函数
-            if (resourceFile && typeof resourceFile === 'object') {
-                const base64Result = await toBase64(resourceFile);
-                if (base64Result) {
-                    console.info('toBase64 辅助函数成功');
-                    return base64Result;
+            // 检查所有可能的属性，进行全面尝试
+            const possibleProps = ['body', 'data', 'content', 'buffer', '_data', 'file', 'binary'];
+            for (const prop of possibleProps) {
+                if (resourceFile[prop] !== undefined && resourceFile[prop] !== null) {
+                    console.info('尝试处理属性: ' + prop + ', 类型: ' + typeof resourceFile[prop]);
+                    const result = await tryProcessValue(resourceFile[prop]);
+                    if (result) {
+                        console.info('通过属性 ' + prop + ' 成功获取数据');
+                        return result;
+                    }
                 }
+            }
+            
+            // 如果上述都失败，尝试直接处理整个对象
+            console.info('尝试直接处理整个对象');
+            const directResult = await tryProcessValue(resourceFile);
+            if (directResult) {
+                console.info('直接处理对象成功');
+                return directResult;
             }
         } else {
             console.info('joplin.data.get 返回 null 或 undefined');
@@ -472,6 +316,102 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
         const errorMessage = e instanceof Error ? e.message : String(e);
         console.info('joplin.data.get 错误: ' + errorMessage);
         console.info('错误堆栈: ' + (e instanceof Error ? e.stack : ''));
+    }
+    
+    // 内部辅助函数，用于处理各种可能的类型
+    async function tryProcessValue(value: any): Promise<string | null> {
+        if (!value) return null;
+        
+        // ArrayBuffer
+        if (value instanceof ArrayBuffer) {
+            console.info('处理 ArrayBuffer');
+            return bytesToBase64(new Uint8Array(value));
+        }
+        
+        // Uint8Array
+        if (value instanceof Uint8Array) {
+            console.info('处理 Uint8Array');
+            return bytesToBase64(value);
+        }
+        
+        // TypedArray
+        const TypedArray = Object.getPrototypeOf(Uint8Array);
+        if (value instanceof TypedArray) {
+            console.info('处理 TypedArray');
+            return bytesToBase64(new Uint8Array(value.buffer));
+        }
+        
+        // Blob
+        if (value instanceof Blob || typeof value.arrayBuffer === 'function') {
+            console.info('处理 Blob 或有 arrayBuffer 方法');
+            try {
+                const buffer = await value.arrayBuffer();
+                return bytesToBase64(new Uint8Array(buffer));
+            } catch (e) {
+                console.info('arrayBuffer 失败: ' + (e instanceof Error ? e.message : String(e)));
+            }
+        }
+        
+        // String
+        if (typeof value === 'string') {
+            if (isDataUri(value)) {
+                console.info('处理 data URI');
+                return value.split(',')[1] || '';
+            }
+            if (/^[A-Za-z0-9+/=]+$/.test(value)) {
+                console.info('处理 base64 字符串');
+                return value;
+            }
+        }
+        
+        // 嵌套对象 - 尝试常见的属性
+        if (typeof value === 'object' && value !== null) {
+            // 尝试 data 检查是否是类数组对象（数字键）
+            const keys = Object.keys(value);
+            if (keys.length > 0 && /^\d+$/.test(keys[0])) {
+                console.info('检测到类数组对象，键数: ' + keys.length);
+                let maxIndex = -1;
+                for (const key of keys) {
+                    if (/^\d+$/.test(key)) {
+                        maxIndex = Math.max(maxIndex, parseInt(key, 10));
+                    }
+                }
+                if (maxIndex >= 0) {
+                    console.info('构造 Uint8Array，长度: ' + (maxIndex + 1));
+                    const uint8Array = new Uint8Array(maxIndex + 1);
+                    for (let i = 0; i <= maxIndex; i++) {
+                        uint8Array[i] = value[i];
+                    }
+                    return bytesToBase64(uint8Array);
+                }
+            }
+            
+            // 尝试 toString('base64')
+            if (typeof value.toString === 'function') {
+                try {
+                    const result = value.toString('base64');
+                    if (typeof result === 'string' && /^[A-Za-z0-9+/=]+$/.test(result)) {
+                        console.info('toString(base64) 成功');
+                        return result;
+                    }
+                } catch (e) {
+                    console.info('toString(base64) 失败: ' + (e instanceof Error ? e.message : String(e)));
+                }
+            }
+            
+            // 尝试递归处理子属性
+            const nestedProps = ['data', 'body', 'content', 'buffer'];
+            for (const prop of nestedProps) {
+                if (value[prop] !== undefined && value[prop] !== null) {
+                    const nestedResult = await tryProcessValue(value[prop]);
+                    if (nestedResult) {
+                        return nestedResult;
+                    }
+                }
+            }
+        }
+        
+        return null;
     }
 
     // 方法2: 尝试通过 resourcePath + fetch（桌面端主要方式）
