@@ -259,7 +259,9 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
     // 方法1: 尝试 joplin.data.get 获取资源文件（移动端主要方式）
     console.info('--- 方法1: joplin.data.get ---');
     try {
-        const resourceFile = await joplin.data.get(['resources', resourceId, 'file']);
+        const resourceFile = await joplin.data.get(['resources', resourceId, 'file'], {
+            fields: ['body', 'data', 'content', 'type', 'contentType', 'attachmentFilename']
+        });
         console.info('joplin.data.get 返回类型: ' + typeof resourceFile);
         
         if (resourceFile) {
@@ -269,7 +271,40 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
             
             for (const key of resourceKeys) {
                 const val = resourceFile[key];
-                console.info(`  属性 ${key}: 类型=${typeof val}, 值=${val === null ? 'null' : (typeof val === 'object' ? '[Object]' : String(val).substring(0, 50))}`);
+                const valType = typeof val;
+                console.info(`  属性 ${key}: 类型=${valType}, 值=${val === null ? 'null' : (valType === 'object' ? `[Object, keys=${Object.keys(val).slice(0, 10).join(',')}...]` : String(val).substring(0, 50))}`);
+            }
+            
+            // 移动端特殊处理：检查是否是类数组对象（序列化的 Uint8Array）
+            if (isMobile) {
+                console.info('--- 移动端特殊处理 ---');
+                
+                // 检查 body 属性
+                if (resourceFile.body) {
+                    console.info('检查 body 属性');
+                    const bodyResult = await tryMobileArrayLikeObject(resourceFile.body);
+                    if (bodyResult) {
+                        console.info('通过 body 属性成功获取数据');
+                        return bodyResult;
+                    }
+                }
+                
+                // 检查 data 属性
+                if (resourceFile.data) {
+                    console.info('检查 data 属性');
+                    const dataResult = await tryMobileArrayLikeObject(resourceFile.data);
+                    if (dataResult) {
+                        console.info('通过 data 属性成功获取数据');
+                        return dataResult;
+                    }
+                }
+                
+                // 直接检查 resourceFile 是否是类数组对象
+                const directResult = await tryMobileArrayLikeObject(resourceFile);
+                if (directResult) {
+                    console.info('直接处理 resourceFile 成功');
+                    return directResult;
+                }
             }
             
             // 尝试处理整个对象
@@ -307,6 +342,7 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
         }
     } catch (e) {
         console.info('方法1失败: ' + (e instanceof Error ? e.message : String(e)));
+        console.info('错误堆栈: ' + (e instanceof Error ? e.stack : ''));
     }
     
     // 方法2: fetchResourceFileFromApi
@@ -348,6 +384,81 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
     
     console.info('========== 所有获取方法均失败 ==========');
     return '';
+}
+
+/**
+ * 尝试处理移动端返回的类数组对象（序列化的 Uint8Array）
+ * 在移动端，API 返回的图片数据可能是一个对象，键是数字索引，值是字节值
+ * 
+ * @param obj - 待处理的对象
+ * @returns Base64 编码的文件内容
+ */
+async function tryMobileArrayLikeObject(obj: any): Promise<string> {
+    if (!obj || typeof obj !== 'object') {
+        return '';
+    }
+    
+    const keys = Object.keys(obj);
+    if (keys.length === 0) {
+        return '';
+    }
+    
+    // 检查是否是类数组对象（第一个键是否是数字）
+    const firstKey = keys[0];
+    if (!/^\d+$/.test(firstKey)) {
+        return '';
+    }
+    
+    console.info(`检测到类数组对象，键数: ${keys.length}`);
+    
+    // 找到最大索引
+    let maxIndex = -1;
+    for (const key of keys) {
+        if (/^\d+$/.test(key)) {
+            const numKey = parseInt(key, 10);
+            if (numKey > maxIndex) {
+                maxIndex = numKey;
+            }
+        }
+    }
+    
+    if (maxIndex < 0) {
+        return '';
+    }
+    
+    // 检查是否有 length 属性（某些序列化的 TypedArray 会有）
+    const hasLength = typeof obj.length === 'number';
+    const actualLength = hasLength ? obj.length : maxIndex + 1;
+    
+    console.info(`构造 Uint8Array，长度: ${actualLength}`);
+    
+    try {
+        const uint8Array = new Uint8Array(actualLength);
+        
+        // 如果有 length 属性，按索引遍历
+        if (hasLength) {
+            for (let i = 0; i < obj.length; i++) {
+                uint8Array[i] = obj[i];
+            }
+        } else {
+            // 否则遍历所有键
+            for (const key of keys) {
+                if (/^\d+$/.test(key)) {
+                    const index = parseInt(key, 10);
+                    if (index < actualLength) {
+                        uint8Array[index] = obj[key];
+                    }
+                }
+            }
+        }
+        
+        const base64Result = bytesToBase64(uint8Array);
+        console.info(`成功转换为 Base64，长度: ${base64Result.length}`);
+        return base64Result;
+    } catch (e) {
+        console.info(`类数组对象处理失败: ${e instanceof Error ? e.message : String(e)}`);
+        return '';
+    }
 }
 
 async function getImageAttachments(html: string): Promise<{ attachments: any[], failedResources: string[] }> {
