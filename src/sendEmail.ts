@@ -247,124 +247,274 @@ async function toBase64(resourceFile: any): Promise<string> {
 }
 
 async function getResourceContentBase64(resourceId: string): Promise<string> {
+    console.info('开始获取资源: ' + resourceId);
+    
+    const versionInfo = await joplin.versionInfo();
+    const platform = versionInfo.platform;
+    const isMobile = platform !== 'desktop';
+    console.info('平台检测: ' + platform + ', isMobile: ' + isMobile);
+    
     // 方法1: 尝试 joplin.data.get 获取资源文件（移动端主要方式）
     // 返回的对象包含: type, body, contentType, attachmentFilename
     try {
         const resourceFile = await joplin.data.get(['resources', resourceId, 'file']);
+        console.info('joplin.data.get 返回结果:', JSON.stringify(resourceFile).substring(0, 200));
+        
         if (resourceFile) {
-            console.info('资源文件类型: ' + typeof resourceFile + ', keys: ' + (resourceFile ? Object.keys(resourceFile).join(', ') : 'null'));
+            const resourceType = typeof resourceFile;
+            const resourceKeys = resourceFile ? Object.keys(resourceFile).join(', ') : 'null';
+            console.info('资源文件类型: ' + resourceType + ', keys: ' + resourceKeys);
+            
+            // 直接处理 ArrayBuffer 类型
+            if (resourceFile instanceof ArrayBuffer) {
+                console.info('直接处理 ArrayBuffer');
+                return bytesToBase64(new Uint8Array(resourceFile));
+            }
+            
+            // 处理 Blob 类型
+            if (resourceFile instanceof Blob || (resourceFile && typeof resourceFile.arrayBuffer === 'function')) {
+                console.info('处理 Blob 类型');
+                try {
+                    const buffer = await resourceFile.arrayBuffer();
+                    return bytesToBase64(new Uint8Array(buffer));
+                } catch (blobErr) {
+                    console.info('Blob 处理失败: ' + (blobErr instanceof Error ? blobErr.message : String(blobErr)));
+                }
+            }
             
             // 检查 body 属性（移动端返回的图片数据在 body 中）
-            if (resourceFile.body) {
-                const bodyKeys = Object.keys(resourceFile.body);
+            if (resourceFile.body !== undefined && resourceFile.body !== null) {
+                console.info('处理 body 属性，类型: ' + typeof resourceFile.body);
+                const body = resourceFile.body;
                 
-                if (resourceFile.body instanceof ArrayBuffer) {
-                    return bytesToBase64(new Uint8Array(resourceFile.body));
-                } else if (typeof resourceFile.body === 'string') {
-                    // 检查是否是 data URI
-                    if (isDataUri(resourceFile.body)) {
-                        return resourceFile.body.split(',')[1] || '';
+                // 直接 ArrayBuffer
+                if (body instanceof ArrayBuffer) {
+                    return bytesToBase64(new Uint8Array(body));
+                }
+                
+                // Uint8Array
+                if (body instanceof Uint8Array) {
+                    return bytesToBase64(body);
+                }
+                
+                // Blob 或有 arrayBuffer 方法
+                if (body instanceof Blob || typeof body.arrayBuffer === 'function') {
+                    try {
+                        const buffer = await body.arrayBuffer();
+                        return bytesToBase64(new Uint8Array(buffer));
+                    } catch (blobBodyErr) {
+                        console.info('body.arrayBuffer 失败: ' + (blobBodyErr instanceof Error ? blobBodyErr.message : String(blobBodyErr)));
                     }
-                    // 如果已经是 base64 字符串（只包含 base64 字符）
-                    if (/^[A-Za-z0-9+/=]+$/.test(resourceFile.body)) {
-                        return resourceFile.body;
+                }
+                
+                // string 类型
+                if (typeof body === 'string') {
+                    // data URI
+                    if (isDataUri(body)) {
+                        return body.split(',')[1] || '';
                     }
-                } else if (resourceFile.body instanceof Blob || typeof resourceFile.body.arrayBuffer === 'function') {
-                    const buffer = await resourceFile.body.arrayBuffer();
-                    return bytesToBase64(new Uint8Array(buffer));
-                } else if (resourceFile.body instanceof Uint8Array) {
-                    return bytesToBase64(resourceFile.body);
-                } else if (resourceFile.body.data) {
-                    if (resourceFile.body.data instanceof ArrayBuffer) {
-                        return bytesToBase64(new Uint8Array(resourceFile.body.data));
-                    } else if (typeof resourceFile.body.data === 'string') {
-                        return isDataUri(resourceFile.body.data) ? resourceFile.body.data.split(',')[1] || '' : resourceFile.body.data;
+                    // base64 字符串
+                    if (/^[A-Za-z0-9+/=]+$/.test(body)) {
+                        return body;
                     }
-                } else if (resourceFile.body.buffer) {
-                    if (resourceFile.body.buffer instanceof ArrayBuffer) {
-                        return bytesToBase64(new Uint8Array(resourceFile.body.buffer));
+                }
+                
+                // 处理 body.data
+                if (body.data !== undefined) {
+                    const data = body.data;
+                    if (data instanceof ArrayBuffer) {
+                        return bytesToBase64(new Uint8Array(data));
                     }
-                } else if (typeof resourceFile.body === 'object' && bodyKeys.length > 0 && /^\d+$/.test(bodyKeys[0])) {
-                    // 移动端返回的 body 是类数组对象（序列化的 Uint8Array）
-                    // 通过检查第一个 key 是否是数字来判断
-                    
-                    // 过滤出纯数字的 key 并找到最大索引（避免栈溢出）
-                    let maxIndex = -1;
-                    for (const key of bodyKeys) {
-                        if (/^\d+$/.test(key)) {
-                            const numKey = parseInt(key, 10);
-                            if (numKey > maxIndex) {
-                                maxIndex = numKey;
+                    if (data instanceof Uint8Array) {
+                        return bytesToBase64(data);
+                    }
+                    if (typeof data === 'string') {
+                        if (isDataUri(data)) {
+                            return data.split(',')[1] || '';
+                        }
+                        if (/^[A-Za-z0-9+/=]+$/.test(data)) {
+                            return data;
+                        }
+                    }
+                    if (data instanceof Blob || typeof data.arrayBuffer === 'function') {
+                        try {
+                            const buffer = await data.arrayBuffer();
+                            return bytesToBase64(new Uint8Array(buffer));
+                        } catch (dataBlobErr) {
+                            console.info('data.arrayBuffer 失败: ' + (dataBlobErr instanceof Error ? dataBlobErr.message : String(dataBlobErr)));
+                        }
+                    }
+                }
+                
+                // 处理 body.buffer
+                if (body.buffer instanceof ArrayBuffer) {
+                    return bytesToBase64(new Uint8Array(body.buffer));
+                }
+                
+                // 移动端返回的类数组对象（序列化的 Uint8Array）
+                // 通过检查第一个 key 是否是数字来判断
+                if (typeof body === 'object' && body !== null) {
+                    const bodyKeys = Object.keys(body);
+                    if (bodyKeys.length > 0 && /^\d+$/.test(bodyKeys[0])) {
+                        console.info('检测到类数组对象，包含 ' + bodyKeys.length + ' 个键');
+                        
+                        // 找到最大索引
+                        let maxIndex = -1;
+                        for (const key of bodyKeys) {
+                            if (/^\d+$/.test(key)) {
+                                const numKey = parseInt(key, 10);
+                                if (numKey > maxIndex) {
+                                    maxIndex = numKey;
+                                }
                             }
                         }
+                        
+                        if (maxIndex >= 0) {
+                            console.info('构造 Uint8Array，长度: ' + (maxIndex + 1));
+                            const uint8Array = new Uint8Array(maxIndex + 1);
+                            for (let i = 0; i <= maxIndex; i++) {
+                                uint8Array[i] = body[i];
+                            }
+                            return bytesToBase64(uint8Array);
+                        }
                     }
                     
-                    if (maxIndex >= 0) {
-                        const uint8Array = new Uint8Array(maxIndex + 1);
-                        for (let i = 0; i <= maxIndex; i++) {
-                            uint8Array[i] = resourceFile.body[i];
+                    // 检查是否有 toString('base64') 方法（Node.js Buffer）
+                    if (typeof body.toString === 'function') {
+                        try {
+                            const result = body.toString('base64');
+                            if (typeof result === 'string' && /^[A-Za-z0-9+/=]+$/.test(result)) {
+                                console.info('使用 toString(base64) 成功');
+                                return result;
+                            }
+                        } catch (toStringErr) {
+                            console.info('toString(base64) 失败: ' + (toStringErr instanceof Error ? toStringErr.message : String(toStringErr)));
                         }
-                        return bytesToBase64(uint8Array);
                     }
                 }
             }
             
-            // 检查 data 属性（其他情况下可能在 data 中）
-            if (resourceFile.data) {
+            // 检查 data 属性
+            if (resourceFile.data !== undefined) {
                 console.info('找到 data 属性，类型: ' + typeof resourceFile.data);
-                if (resourceFile.data instanceof ArrayBuffer) {
-                    return bytesToBase64(new Uint8Array(resourceFile.data));
-                } else if (typeof resourceFile.data === 'string') {
-                    return isDataUri(resourceFile.data) ? resourceFile.data.split(',')[1] || '' : resourceFile.data;
+                const data = resourceFile.data;
+                
+                if (data instanceof ArrayBuffer) {
+                    return bytesToBase64(new Uint8Array(data));
+                }
+                if (data instanceof Uint8Array) {
+                    return bytesToBase64(data);
+                }
+                if (data instanceof Blob || typeof data.arrayBuffer === 'function') {
+                    try {
+                        const buffer = await data.arrayBuffer();
+                        return bytesToBase64(new Uint8Array(buffer));
+                    } catch (dataBlobErr) {
+                        console.info('data.arrayBuffer 失败: ' + (dataBlobErr instanceof Error ? dataBlobErr.message : String(dataBlobErr)));
+                    }
+                }
+                if (typeof data === 'string') {
+                    if (isDataUri(data)) {
+                        return data.split(',')[1] || '';
+                    }
+                    if (/^[A-Za-z0-9+/=]+$/.test(data)) {
+                        return data;
+                    }
                 }
             }
             
-            // 检查是否是 Blob
-            if (resourceFile instanceof Blob || typeof resourceFile.arrayBuffer === 'function') {
-                console.info('资源文件是 Blob 或有 arrayBuffer 方法');
-                const buffer = await resourceFile.arrayBuffer();
-                return bytesToBase64(new Uint8Array(buffer));
+            // 检查 content 属性（某些 API 可能使用这个字段）
+            if (resourceFile.content !== undefined) {
+                console.info('找到 content 属性，类型: ' + typeof resourceFile.content);
+                const content = resourceFile.content;
+                
+                if (content instanceof ArrayBuffer) {
+                    return bytesToBase64(new Uint8Array(content));
+                }
+                if (content instanceof Uint8Array) {
+                    return bytesToBase64(content);
+                }
+                if (content instanceof Blob || typeof content.arrayBuffer === 'function') {
+                    try {
+                        const buffer = await content.arrayBuffer();
+                        return bytesToBase64(new Uint8Array(buffer));
+                    } catch (contentBlobErr) {
+                        console.info('content.arrayBuffer 失败: ' + (contentBlobErr instanceof Error ? contentBlobErr.message : String(contentBlobErr)));
+                    }
+                }
+                if (typeof content === 'string') {
+                    if (isDataUri(content)) {
+                        return content.split(',')[1] || '';
+                    }
+                    if (/^[A-Za-z0-9+/=]+$/.test(content)) {
+                        return content;
+                    }
+                }
             }
+            
+            // 检查 buffer 属性（某些序列化方式）
+            if (resourceFile.buffer instanceof ArrayBuffer) {
+                return bytesToBase64(new Uint8Array(resourceFile.buffer));
+            }
+            
+            // 尝试使用 toBase64 辅助函数
+            if (resourceFile && typeof resourceFile === 'object') {
+                const base64Result = await toBase64(resourceFile);
+                if (base64Result) {
+                    console.info('toBase64 辅助函数成功');
+                    return base64Result;
+                }
+            }
+        } else {
+            console.info('joplin.data.get 返回 null 或 undefined');
         }
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);
         console.info('joplin.data.get 错误: ' + errorMessage);
-        // 如果 joplin.data.get 失败，直接返回空，不继续尝试其他方法
-        return '';
+        console.info('错误堆栈: ' + (e instanceof Error ? e.stack : ''));
     }
 
     // 方法2: 尝试通过 resourcePath + fetch（桌面端主要方式）
-    try {
-        const resourcePath = await joplin.data.resourcePath(resourceId);
-        if (resourcePath) {
-            console.info('resourcePath: ' + resourcePath);
-            const normalizedPath = normalizeResourcePath(resourcePath);
-            const response = await fetch(normalizedPath);
-            if (response.ok) {
-                const buffer = await response.arrayBuffer();
-                return bytesToBase64(new Uint8Array(buffer));
+    // 移动端可能不支持此方法
+    if (!isMobile) {
+        try {
+            const resourcePath = await joplin.data.resourcePath(resourceId);
+            if (resourcePath) {
+                console.info('resourcePath: ' + resourcePath);
+                const normalizedPath = normalizeResourcePath(resourcePath);
+                const response = await fetch(normalizedPath);
+                if (response.ok) {
+                    const buffer = await response.arrayBuffer();
+                    return bytesToBase64(new Uint8Array(buffer));
+                } else {
+                    console.info('fetch 响应失败，状态码: ' + response.status);
+                }
             }
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            console.info('resourcePath + fetch 错误: ' + errorMessage);
         }
-    } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        console.info('resourcePath + fetch 错误: ' + errorMessage);
+    } else {
+        console.info('移动端跳过 resourcePath 方法');
     }
 
-    // 方法3: 尝试 imaging API（桌面端辅助方式）- 移动端不支持，跳过
-    // 由于移动端不支持 imaging API，这里不再尝试
-    // if (joplin.imaging?.createFromResource) {
-    //     try {
-    //         const handle = await joplin.imaging.createFromResource(resourceId);
-    //         const data = await joplin.imaging.resize(handle);
-    //         await joplin.imaging.free(handle);
-    //         if (typeof data === 'string' && data.startsWith('data:')) {
-    //             return data.split(',')[1] || '';
-    //         }
-    //     } catch (e) {
-    //         console.info('imaging API 错误: ' + (e?.message || String(e)));
-    //     }
-    // }
+    // 方法3: 尝试 imaging API（仅桌面端）
+    if (!isMobile && joplin.imaging?.createFromResource) {
+        try {
+            console.info('尝试 imaging API');
+            const handle = await joplin.imaging.createFromResource(resourceId);
+            const data = await joplin.imaging.resize(handle);
+            await joplin.imaging.free(handle);
+            if (typeof data === 'string' && data.startsWith('data:')) {
+                console.info('imaging API 成功');
+                return data.split(',')[1] || '';
+            }
+        } catch (e) {
+            console.info('imaging API 错误: ' + (e instanceof Error ? e.message : String(e)));
+        }
+    }
 
+    console.info('所有方法均失败，返回空字符串');
     return '';
 }
 
@@ -477,11 +627,11 @@ export async function sendEmail(title: any, content: string): Promise<boolean> {
     if (!resendApiKey || !from || !to) {
         await joplin.views.dialogs.showMessageBox('\u8BF7\u5148\u914D\u7F6E Resend API Key\u3001\u53D1\u9001\u8005\u90AE\u7BB1\u548C\u63A5\u6536\u8005\u90AE\u7BB1');
         return false;
-        return false;
     }
 
     const versionInfo = await joplin.versionInfo();
     const isDesktop = versionInfo.platform === 'desktop';
+    const platform = versionInfo.platform;
 
     let htmlText = await convertToHTML(content);
     
@@ -489,8 +639,16 @@ export async function sendEmail(title: any, content: string): Promise<boolean> {
     
     // 如果有失败的图片资源，不发送邮件
     if (failedResources.length > 0) {
-        await joplin.views.dialogs.showMessageBox('\u56FE\u7247\u8D44\u6E90\u83B7\u53D6\u5931\u8D25\uff0C\u5DF2\u5931\u8D25: ' + failedResources.length + ' \u4E2A');
-        return false;
+        console.info('图片资源获取失败详情:');
+        console.info('- 平台: ' + platform);
+        console.info('- 失败的资源数量: ' + failedResources.length);
+        console.info('- 失败的资源ID: ' + JSON.stringify(failedResources));
+        console.info('- 附件数量: ' + attachments.length);
+        
+        // 详细的失败消息
+        const errorMsg = `\u56FE\u7247\u8D44\u6E90\u83B7\u53D6\u5931\u8D25\uFF08${failedResources.length}\u4E2A\uFF09\u3002\u8BF7\u67E5\u770B\u63A7\u5236\u53F0\u8BE6\u7EC6\u4FE1\u606F\u3002\n\n\u629B\u5F00\u7B56\u7565\uFF1A\n1. \u68C0\u67E5\u56FE\u7247\u662F\u5426\u6B63\u5E38\u4FDD\u5B58\n2. \u5C1D\u8BD5\u91CD\u65B0\u63D2\u5165\u56FE\u7247\n3. \u786E\u4FDD\u7F51\u7EDC\u8FDE\u63A5\u6B63\u5E38`;
+        
+        await joplin.views.dialogs.showMessageBox(errorMsg);
         return false;
     }
     
@@ -509,7 +667,7 @@ export async function sendEmail(title: any, content: string): Promise<boolean> {
     if (success) {
         await joplin.views.dialogs.showMessageBox('\u90AE\u4EF6\u5DF2\u6210\u529F\u53D1\u9001\uFF01');
     } else {
-        await joplin.views.dialogs.showMessageBox('\u90AE\u4EF6\u53D1\u9001\u5931\u8D25\uff0C\u8BF7\u68C0\u67E5\u914D\u7F6E\u548C\u7F51\u7EDC\u8FDE\u63A5');
+        await joplin.views.dialogs.showMessageBox('\u90AE\u4EF6\u53D1\u9001\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u914D\u7F6E\u548C\u7F51\u7EDC\u8FDE\u63A5');
     }
     
     return success;
