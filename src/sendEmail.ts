@@ -259,9 +259,10 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
     // 方法1: 尝试 joplin.data.get 获取资源文件（移动端主要方式）
     console.info('--- 方法1: joplin.data.get ---');
     try {
-        const resourceFile = await joplin.data.get(['resources', resourceId, 'file'], {
-            fields: ['body', 'data', 'content', 'type', 'contentType', 'attachmentFilename']
-        });
+        // 移动端必须使用 base64 编码，不支持 buffer 编码
+        const dataParams = isMobile ? { encoding: 'base64' } : {};
+        const resourceFile = await joplin.data.get(['resources', resourceId, 'file'], dataParams);
+        console.info('使用编码方式: ' + (isMobile ? 'base64' : 'buffer'));
         console.info('joplin.data.get 返回类型: ' + typeof resourceFile);
         
         if (resourceFile) {
@@ -275,13 +276,27 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
                 console.info(`  属性 ${key}: 类型=${valType}, 值=${val === null ? 'null' : (valType === 'object' ? `[Object, keys=${Object.keys(val).slice(0, 10).join(',')}...]` : String(val).substring(0, 50))}`);
             }
             
-            // 移动端特殊处理：检查是否是类数组对象（序列化的 Uint8Array）
+                // 移动端特殊处理：使用 base64 编码
             if (isMobile) {
                 console.info('--- 移动端特殊处理 ---');
                 
-                // 检查 body 属性
+                // 当使用 encoding: 'base64' 时，返回的可能是直接的 base64 字符串
+                // 检查 resourceFile 是否是字符串
+                if (typeof resourceFile === 'string') {
+                    console.info('返回结果是字符串，检查是否是 base64');
+                    if (/^[A-Za-z0-9+/=]+$/.test(resourceFile)) {
+                        console.info('直接返回 base64 字符串');
+                        return resourceFile;
+                    }
+                }
+                
+                // 检查 body 属性（base64 编码时数据可能在 body 中）
                 if (resourceFile.body) {
                     console.info('检查 body 属性');
+                    if (typeof resourceFile.body === 'string' && /^[A-Za-z0-9+/=]+$/.test(resourceFile.body)) {
+                        console.info('body 是 base64 字符串');
+                        return resourceFile.body;
+                    }
                     const bodyResult = await tryMobileArrayLikeObject(resourceFile.body);
                     if (bodyResult) {
                         console.info('通过 body 属性成功获取数据');
@@ -292,6 +307,10 @@ async function getResourceContentBase64(resourceId: string): Promise<string> {
                 // 检查 data 属性
                 if (resourceFile.data) {
                     console.info('检查 data 属性');
+                    if (typeof resourceFile.data === 'string' && /^[A-Za-z0-9+/=]+$/.test(resourceFile.data)) {
+                        console.info('data 是 base64 字符串');
+                        return resourceFile.data;
+                    }
                     const dataResult = await tryMobileArrayLikeObject(resourceFile.data);
                     if (dataResult) {
                         console.info('通过 data 属性成功获取数据');
